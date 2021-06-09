@@ -568,3 +568,28 @@ func (c *dbCollection) toMarshal() interface{} {
 func (c *dbCollection) writeYAML(w io.Writer) error {
 	return utils.WriteYAML(w, c.toMarshal())
 }
+
+type lockCollection struct {
+	locks []types.Lock
+}
+
+func (c *lockCollection) resources() (r []types.Resource) {
+	for _, resource := range c.locks {
+		r = append(r, resource)
+	}
+	return r
+}
+
+func (c *lockCollection) writeText(w io.Writer) error {
+	t := asciitable.MakeTable([]string{"ID", "Target", "In Force Until"})
+	for _, lock := range c.locks {
+		inForceUntil := "unlimited"
+		if lock.InForceUntil() != nil {
+			inForceUntil = lock.InForceUntil().Format(time.RFC822)
+		}
+		target := lock.Target()
+		t.AddRow([]string{lock.GetName(), target.String(), inForceUntil})
+	}
+	_, err := t.AsBuffer().WriteTo(w)
+	return trace.Wrap(err)
+}
