@@ -885,6 +885,8 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 		}
 	}
 
+	fmt.Printf("--> Created AuditWriter.\n")
+
 	// Emit a session.start event for the exec session.
 	sessionStartEvent := &events.SessionStart{
 		Metadata: events.Metadata{
@@ -921,6 +923,8 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 		ctx.WithError(err).Warn("Failed to emit session start event.")
 	}
 
+	fmt.Printf("--> Emitted session.start event, attempting to re-exec.\n")
+
 	// Start execution. If the program failed to start, send that result back.
 	// Note this is a partial start. Teleport will have re-exec'ed itself and
 	// wait until it's been placed in a cgroup and told to continue.
@@ -932,6 +936,8 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 		ctx.Debugf("Exec request (%v) result: %v.", ctx.ExecRequest, result)
 		ctx.SendExecResult(*result)
 	}
+
+	fmt.Printf("--> Re-exec successful, waiting for Continue.\n")
 
 	// Open a BPF recording session. If BPF was not configured, not available,
 	// or running in a recording proxy, OpenSession is a NOP.
@@ -959,13 +965,18 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 
 	// Process has been placed in a cgroup, continue execution.
 	ctx.ExecRequest.Continue()
+	fmt.Printf("--> Exec Continue successful.\n")
 
 	// Process is running, wait for it to stop.
 	go func() {
+		fmt.Printf("--> Waiting on re-exec to complete.\n")
+
 		result = ctx.ExecRequest.Wait()
 		if result != nil {
 			ctx.SendExecResult(*result)
 		}
+
+		fmt.Printf("--> Re-exec complete with result: %v.\n", result)
 
 		// Wait a little bit to let all events filter through before closing the
 		// BPF session so everything can be recorded.
@@ -1018,6 +1029,8 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 			ctx.WithError(err).Warn("Failed to emit session end event.")
 		}
 
+		fmt.Printf("--> Emitted session.end event.\n")
+
 		// Close recorder to free up associated resources and flush data.
 		if err := s.recorder.Close(ctx.srv.Context()); err != nil {
 			ctx.WithError(err).Warn("Failed to close recorder.")
@@ -1038,6 +1051,8 @@ func (s *session) startExec(channel ssh.Channel, ctx *ServerContext) error {
 					s.id, err)
 			}
 		}
+
+		fmt.Printf("--> Re-exec complete.\n")
 	}()
 
 	return nil

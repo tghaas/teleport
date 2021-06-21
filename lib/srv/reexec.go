@@ -521,18 +521,47 @@ func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	// Write command bytes to pipe. The child process will read the command
-	// to execute from this pipe.
-	_, err = io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	err = ctx.cmdw.Close()
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	// Set to nil so the close in the context doesn't attempt to re-close.
-	ctx.cmdw = nil
+	fmt.Printf("--> ConfigureCommand: Marshal (%v bytes) successful, starting io.Copy.\n", len(cmdbytes))
+
+	//// Write command bytes to pipe. The child process will read the command
+	//// to execute from this pipe.
+	//_, err = io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
+	//if err != nil {
+	//	return nil, trace.Wrap(err)
+	//}
+
+	//fmt.Printf("--> ConfigureCommand: Copy to ctx.cmdw successful.\n")
+
+	//err = ctx.cmdw.Close()
+	//if err != nil {
+	//	return nil, trace.Wrap(err)
+	//}
+	//fmt.Printf("--> ConfigureCommand: Closing ctx.cmdw.\n")
+
+	//// Set to nil so the close in the context doesn't attempt to re-close.
+	//ctx.cmdw = nil
+
+	go func() {
+		// Write command bytes to pipe. The child process will read the command
+		// to execute from this pipe.
+		_, err = io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
+		if err != nil {
+			fmt.Printf("--> ConfigureCommand: Failed to copy to command pipe: %v.", err)
+			return
+		}
+
+		fmt.Printf("--> ConfigureCommand: Copy to ctx.cmdw successful.\n")
+
+		err = ctx.cmdw.Close()
+		if err != nil {
+			fmt.Printf("--> ConfigureCommand: Failed to close command pipe: %v.\n", err)
+			return
+		}
+		fmt.Printf("--> ConfigureCommand: Closing ctx.cmdw.\n")
+
+		// Set to nil so the close in the context doesn't attempt to re-close.
+		ctx.cmdw = nil
+	}()
 
 	// Find the Teleport executable and its directory on disk.
 	executable, err := os.Executable()
@@ -540,6 +569,7 @@ func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
 		return nil, trace.Wrap(err)
 	}
 	executableDir, _ := filepath.Split(executable)
+	fmt.Printf("--> ConfigureCommand: Found executable: %v.\n", executable)
 
 	// The channel type determines the subcommand to execute (execution or
 	// port forwarding).
@@ -562,9 +592,12 @@ func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
 			ctx.contr,
 		},
 	}
+	fmt.Printf("--> ConfigureCommand: Built executable.\n")
 
 	// Perform OS-specific tweaks to the command.
 	reexecCommandOSTweaks(cmd)
+
+	fmt.Printf("--> ConfigureCommand: Tweaked executable.\n")
 
 	return cmd, nil
 }

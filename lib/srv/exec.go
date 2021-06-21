@@ -135,27 +135,35 @@ func (e *localExec) SetCommand(command string) {
 // Start launches the given command returns (nil, nil) if successful.
 // ExecResult is only used to communicate an error while launching.
 func (e *localExec) Start(channel ssh.Channel) (*ExecResult, error) {
+	fmt.Printf("--> localExec: Enter.\n")
+
 	// Parse the command to see if it is scp.
 	err := e.transformSecureCopy()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	fmt.Printf("--> localExec: transformSecureCopy complete.\n")
 
 	// Create the command that will actually execute.
 	e.Cmd, err = ConfigureCommand(e.Ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	fmt.Printf("--> localExec: ConfigureCommand complete.\n")
 
 	// Connect stdout and stderr to the channel so the user can interact with the command.
 	e.Cmd.Stderr = channel.Stderr()
 	e.Cmd.Stdout = channel
+
+	fmt.Printf("--> localExec: stdout and stderr connected.\n")
 
 	// Copy from the channel (client input) into stdin of the process.
 	inputWriter, err := e.Cmd.StdinPipe()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	fmt.Printf("--> localExec: stdin connected.\n")
+	fmt.Printf("--> localExec: Attempting to execute command.\n")
 
 	// Start the command.
 	err = e.Cmd.Start()
@@ -231,12 +239,14 @@ func (e *localExec) transformSecureCopy() error {
 	// it's an interactive shell the user requested and not scp, return
 	args := strings.Split(e.GetCommand(), " ")
 	if len(args) == 0 {
+		fmt.Printf("--> localExec.transformSecureCopy: No args, not transforming.\n")
 		return nil
 	}
 
 	// see the user is not requesting scp, return
 	_, f := filepath.Split(args[0])
 	if f != teleport.SCP {
+		fmt.Printf("--> localExec.transformSecureCopy: Not scp, not transforming.\n")
 		return nil
 	}
 
@@ -251,6 +261,8 @@ func (e *localExec) transformSecureCopy() error {
 		e.Ctx.ServerConn.RemoteAddr().String(),
 		e.Ctx.ServerConn.LocalAddr().String(),
 		strings.Join(args[1:], " "))
+
+	fmt.Printf("--> localExec.transformSecureCopy: Transformed: %v.\n", e.Command)
 
 	return nil
 }

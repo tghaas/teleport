@@ -18,6 +18,7 @@ package srv
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gravitational/teleport"
@@ -64,7 +65,8 @@ func StartKeepAliveLoop(p KeepAliveParams) {
 	})
 	log.Debugf("Starting keep-alive loop with with interval %v and max count %v.", p.Interval, p.MaxCount)
 
-	tickerCh := time.NewTicker(p.Interval)
+	//tickerCh := time.NewTicker(p.Interval)
+	tickerCh := time.NewTicker(5 * time.Second)
 	defer tickerCh.Stop()
 
 	for {
@@ -110,6 +112,7 @@ func sendKeepAliveWithTimeout(closeContext context.Context, conn RequestSender, 
 	go func() {
 		// SendRequest will unblock when connection or channel is closed.
 		_, _, err := conn.SendRequest(teleport.KeepAliveReqType, true, nil)
+		fmt.Printf("--> Sent keep alive, result: %v.\n", err)
 		errorCh <- err
 	}()
 
