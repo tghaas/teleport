@@ -511,57 +511,17 @@ func buildCommand(c *ExecCommand, tty *os.File, pty *os.File, pamEnvironment []s
 // function is used by Teleport to re-execute itself and pass whatever data
 // is need to the child to actually execute the shell.
 func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
-	// Marshal the parts needed from the *ServerContext into an *execCommand.
-	cmdmsg, err := ctx.ExecCommand()
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	cmdbytes, err := json.Marshal(cmdmsg)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	fmt.Printf("--> ConfigureCommand: Marshal (%v bytes) successful, starting io.Copy.\n", len(cmdbytes))
-
-	//// Write command bytes to pipe. The child process will read the command
-	//// to execute from this pipe.
-	//_, err = io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
+	//// Marshal the parts needed from the *ServerContext into an *execCommand.
+	//cmdmsg, err := ctx.ExecCommand()
+	//if err != nil {
+	//	return nil, trace.Wrap(err)
+	//}
+	//cmdbytes, err := json.Marshal(cmdmsg)
 	//if err != nil {
 	//	return nil, trace.Wrap(err)
 	//}
 
-	//fmt.Printf("--> ConfigureCommand: Copy to ctx.cmdw successful.\n")
-
-	//err = ctx.cmdw.Close()
-	//if err != nil {
-	//	return nil, trace.Wrap(err)
-	//}
-	//fmt.Printf("--> ConfigureCommand: Closing ctx.cmdw.\n")
-
-	//// Set to nil so the close in the context doesn't attempt to re-close.
-	//ctx.cmdw = nil
-
-	go func() {
-		// Write command bytes to pipe. The child process will read the command
-		// to execute from this pipe.
-		_, err = io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
-		if err != nil {
-			fmt.Printf("--> ConfigureCommand: Failed to copy to command pipe: %v.", err)
-			return
-		}
-
-		fmt.Printf("--> ConfigureCommand: Copy to ctx.cmdw successful.\n")
-
-		err = ctx.cmdw.Close()
-		if err != nil {
-			fmt.Printf("--> ConfigureCommand: Failed to close command pipe: %v.\n", err)
-			return
-		}
-		fmt.Printf("--> ConfigureCommand: Closing ctx.cmdw.\n")
-
-		// Set to nil so the close in the context doesn't attempt to re-close.
-		ctx.cmdw = nil
-	}()
+	//go copyCommand(ctx, cmdbytes)
 
 	// Find the Teleport executable and its directory on disk.
 	executable, err := os.Executable()
@@ -569,7 +529,6 @@ func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
 		return nil, trace.Wrap(err)
 	}
 	executableDir, _ := filepath.Split(executable)
-	fmt.Printf("--> ConfigureCommand: Found executable: %v.\n", executable)
 
 	// The channel type determines the subcommand to execute (execution or
 	// port forwarding).
@@ -592,12 +551,31 @@ func ConfigureCommand(ctx *ServerContext) (*exec.Cmd, error) {
 			ctx.contr,
 		},
 	}
-	fmt.Printf("--> ConfigureCommand: Built executable.\n")
 
 	// Perform OS-specific tweaks to the command.
 	reexecCommandOSTweaks(cmd)
 
-	fmt.Printf("--> ConfigureCommand: Tweaked executable.\n")
-
 	return cmd, nil
+}
+
+// copyCommand will copy the provided command to the child process over the
+// pipe attached to the context.
+func copyCommand(ctx *ServerContext, cmdbytes []byte) {
+	defer func() {
+		err := ctx.cmdw.Close()
+		if err != nil {
+			log.Errorf("Failed to close command pipe: %v.", err)
+		}
+
+		// Set to nil so the close in the context doesn't attempt to re-close.
+		ctx.cmdw = nil
+	}()
+
+	// Write command bytes to pipe. The child process will read the command
+	// to execute from this pipe.
+	_, err := io.Copy(ctx.cmdw, bytes.NewReader(cmdbytes))
+	if err != nil {
+		log.Errorf("Failed to copy command over pipe: %v.", err)
+		return
+	}
 }

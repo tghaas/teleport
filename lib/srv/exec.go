@@ -18,6 +18,7 @@ package srv
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -135,35 +136,27 @@ func (e *localExec) SetCommand(command string) {
 // Start launches the given command returns (nil, nil) if successful.
 // ExecResult is only used to communicate an error while launching.
 func (e *localExec) Start(channel ssh.Channel) (*ExecResult, error) {
-	fmt.Printf("--> localExec: Enter.\n")
-
 	// Parse the command to see if it is scp.
 	err := e.transformSecureCopy()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	fmt.Printf("--> localExec: transformSecureCopy complete.\n")
 
 	// Create the command that will actually execute.
 	e.Cmd, err = ConfigureCommand(e.Ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	fmt.Printf("--> localExec: ConfigureCommand complete.\n")
 
 	// Connect stdout and stderr to the channel so the user can interact with the command.
 	e.Cmd.Stderr = channel.Stderr()
 	e.Cmd.Stdout = channel
-
-	fmt.Printf("--> localExec: stdout and stderr connected.\n")
 
 	// Copy from the channel (client input) into stdin of the process.
 	inputWriter, err := e.Cmd.StdinPipe()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	fmt.Printf("--> localExec: stdin connected.\n")
-	fmt.Printf("--> localExec: Attempting to execute command.\n")
 
 	// Start the command.
 	err = e.Cmd.Start()
@@ -186,7 +179,17 @@ func (e *localExec) Start(channel ssh.Channel) (*ExecResult, error) {
 		inputWriter.Close()
 	}()
 
-	e.Ctx.Infof("Started local command execution: %q", e.Command)
+	// Marshal the parts needed from the *ServerContext into an *execCommand.
+	// TODO(russjones): Make sure an error returned here will cleanup correctly.
+	cmdmsg, err := e.Ctx.ExecCommand()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	cmdbytes, err := json.Marshal(cmdmsg)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	copyCommand(e.Ctx, cmdbytes)
 
 	return nil, nil
 }
